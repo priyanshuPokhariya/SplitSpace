@@ -1,0 +1,289 @@
+[
+  {
+    "id": "grp-goa-2026",
+    "shareCode": "GOA-7824",
+    "slug": "trip-to-goa",
+    "name": "Trip to Goa 🌴",
+    "description": "4 friends traveling across North & South Goa for a weekend getaway.",
+    "defaultCurrency": "USD",
+    "members": [
+      {
+        "id": "m1",
+        "name": "Aarav Sharma",
+        "avatarColor": "#3B82F6",
+        "createdAt": "2026-09-12T18:57:42.806Z"
+      },
+      {
+        "id": "m2",
+        "name": "Riya Patel",
+        "avatarColor": "#EC4899",
+        "createdAt": "2026-09-12T18:57:42.807Z"
+      },
+      {
+        "id": "m3",
+        "name": "Kabir Verma",
+        "avatarColor": "#10B981",
+        "createdAt": "2026-09-12T18:57:42.807Z"
+      },
+      {
+        "id": "m4",
+        "name": "Ananya Roy",
+        "avatarColor": "#F59E0B",
+        "createdAt": "2026-09-12T18:57:42.807Z"
+      }
+    ],
+    "expenses": [
+      {
+        "id": "exp-1",
+        "groupId": "grp-goa-2026",
+        "title": "Beachside Villa Airbnb (3 Nights - Upgraded)",
+        "description": "Private 3-bedroom villa near Anjuna beach",
+        "amount": 400,
+        "currency": "USD",
+        "exchangeRateToBase": 1,
+        "baseAmount": 400,
+        "category": "Accommodation",
+        "date": "2026-09-09T18:57:42.807Z",
+        "paidBy": [
+          {
+            "memberId": "m1",
+            "memberName": "Aarav Sharma",
+            "amount": 400
+          }
+        ],
+        "splitType": "EQUAL",
+        "splits": [
+          {
+            "memberId": "m1",
+            "memberName": "Aarav Sharma",
+            "shareAmount": 100
+          },
+          {
+            "memberId": "m2",
+            "memberName": "Riya Patel",
+            "shareAmount": 100
+          },
+          {
+            "memberId": "m3",
+            "memberName": "Kabir Verma",
+            "shareAmount": 100
+          },
+          {
+            "memberId": "m4",
+            "memberName": "Ananya Roy",
+            "shareAmount": 100
+          }
+        ],
+        "notes": "Advance paid through Airbnb",
+        "createdAt": "2026-09-09T18:57:42.807Z",
+        "updatedAt": "2026-09-12T19:07:02.976Z"
+      },
+      {
+        "id": "exp-2",
+        "groupId": "grp-goa-2026",
+        "title": "Seafood Dinner at Thalassa",
+        "description": "Greek dinner + cocktails at sunset",
+        "amount": 140,
+        "currency": "USD",
+        "exchangeRateToBase": 1,
+        "baseAmount": 140,
+        "category": "Food & Dining",
+        "date": "2026-09-10T18:57:42.807Z",
+        "paidBy": [
+          {
+            "memberId": "m2",
+            "memberName": "Riya Patel",
+            "amount": 140
+          }
+        ],
+        "splitType": "SHARES",
+        "splits": [
+          {
+            "memberId": "m1",
+            "memberName": "Aarav Sharma",
+            "shareAmount": 28,
+            "shares": 1
+          },
+          {
+            "memberId": "m2",
+            "memberName": "Riya Patel",
+            "shareAmount": 28,
+            "shares": 1
+          },
+          {
+            "memberId": "m3",
+            "memberName": "Kabir Verma",
+            "shareAmount": 56,
+            "shares": 2
+          },
+          {
+            "memberId": "m4",
+            "memberName": "Ananya Roy",
+            "shareAmount": 28,
+            "shares": 1
+          }
+        ],
+        "notes": "Split with weighted shares for extra cocktails",
+        "createdAt": "2026-09-10T18:57:42.807Z",
+        "updatedAt": "2026-09-10T18:57:42.807Z"
+      },
+      {
+        "id": "exp-3",
+        "groupId": "grp-goa-2026",
+        "title": "Scooters & Fuel Rentals (4 Bikes)",
+        "description": "Honda Activa 4-day rentals plus full tanks",
+        "amount": 80,
+        "currency": "USD",
+        "exchangeRateToBase": 1,
+        "baseAmount": 80,
+        "category": "Transportation",
+        "date": "2026-09-11T18:57:42.807Z",
+        "paidBy": [
+          {
+            "memberId": "m3",
+            "memberName": "Kabir Verma",
+            "amount": 80
+          }
+        ],
+        "splitType": "EQUAL",
+        "splits": [
+          {
+            "memberId": "m1",
+            "memberName": "Aarav Sharma",
+            "shareAmount": 20
+          },
+          {
+            "memberId": "m2",
+            "memberName": "Riya Patel",
+            "shareAmount": 20
+          },
+          {
+            "memberId": "m3",
+            "memberName": "Kabir Verma",
+            "shareAmount": 20
+          },
+          {
+            "memberId": "m4",
+            "memberName": "Ananya Roy",
+            "shareAmount": 20
+          }
+        ],
+        "createdAt": "2026-09-11T18:57:42.807Z",
+        "updatedAt": "2026-09-11T18:57:42.807Z"
+      },
+      {
+        "id": "exp-4",
+        "groupId": "grp-goa-2026",
+        "title": "Scuba Diving & Water Sports",
+        "description": "Grand Island package for Aarav & Kabir",
+        "amount": 120,
+        "currency": "USD",
+        "exchangeRateToBase": 1,
+        "baseAmount": 120,
+        "category": "Activities",
+        "date": "2026-09-12T18:57:42.807Z",
+        "paidBy": [
+          {
+            "memberId": "m4",
+            "memberName": "Ananya Roy",
+            "amount": 120
+          }
+        ],
+        "splitType": "EXACT",
+        "splits": [
+          {
+            "memberId": "m1",
+            "memberName": "Aarav Sharma",
+            "shareAmount": 60,
+            "exactAmount": 60
+          },
+          {
+            "memberId": "m3",
+            "memberName": "Kabir Verma",
+            "shareAmount": 60,
+            "exactAmount": 60
+          }
+        ],
+        "notes": "Only Aarav and Kabir opted for the deep scuba dive",
+        "createdAt": "2026-09-12T18:57:42.807Z",
+        "updatedAt": "2026-09-12T18:57:42.807Z"
+      }
+    ],
+    "settlements": [
+      {
+        "id": "stl-1",
+        "groupId": "grp-goa-2026",
+        "fromMemberId": "m2",
+        "fromMemberName": "Riya Patel",
+        "toMemberId": "m1",
+        "toMemberName": "Aarav Sharma",
+        "amount": 50,
+        "currency": "USD",
+        "date": "2026-09-11T18:57:42.807Z",
+        "notes": "Partial settlement via UPI for the villa",
+        "paymentMethod": "UPI",
+        "completed": true,
+        "createdAt": "2026-09-11T18:57:42.807Z"
+      }
+    ],
+    "auditLogs": [
+      {
+        "id": "log-1789240025194",
+        "groupId": "grp-goa-2026",
+        "action": "EXPENSE_DELETED",
+        "description": "Expense \"Beach Umbrellas & Chairs\" was deleted",
+        "timestamp": "2026-09-12T19:07:05.194Z"
+      },
+      {
+        "id": "log-1789240022976",
+        "groupId": "grp-goa-2026",
+        "action": "EXPENSE_UPDATED",
+        "description": "Aarav Sharma updated \"Beachside Villa Airbnb (3 Nights - Upgraded)\" (USD 400.00)",
+        "timestamp": "2026-09-12T19:07:02.976Z",
+        "actorName": "Aarav Sharma"
+      },
+      {
+        "id": "log-1789239468618",
+        "groupId": "grp-goa-2026",
+        "action": "EXPENSE_ADDED",
+        "description": "Riya Patel added \"Beach Umbrellas & Chairs\" (USD 24.00)",
+        "timestamp": "2026-09-12T18:57:48.618Z",
+        "actorName": "Riya Patel"
+      },
+      {
+        "id": "log-1",
+        "groupId": "grp-goa-2026",
+        "action": "GROUP_CREATED",
+        "description": "Group \"Trip to Goa\" was created with base currency USD",
+        "timestamp": "2026-09-08T18:57:42.807Z",
+        "actorName": "Aarav Sharma"
+      },
+      {
+        "id": "log-2",
+        "groupId": "grp-goa-2026",
+        "action": "EXPENSE_ADDED",
+        "description": "Aarav Sharma added \"Beachside Villa Airbnb\" ($360.00)",
+        "timestamp": "2026-09-09T18:57:42.807Z",
+        "actorName": "Aarav Sharma"
+      },
+      {
+        "id": "log-3",
+        "groupId": "grp-goa-2026",
+        "action": "EXPENSE_ADDED",
+        "description": "Riya Patel added \"Seafood Dinner at Thalassa\" ($140.00)",
+        "timestamp": "2026-09-10T18:57:42.807Z",
+        "actorName": "Riya Patel"
+      },
+      {
+        "id": "log-4",
+        "groupId": "grp-goa-2026",
+        "action": "SETTLEMENT_RECORDED",
+        "description": "Riya Patel settled $50.00 with Aarav Sharma via UPI",
+        "timestamp": "2026-09-11T18:57:42.807Z",
+        "actorName": "Riya Patel"
+      }
+    ],
+    "createdAt": "2026-09-08T18:57:42.807Z",
+    "updatedAt": "2026-09-12T19:07:05.194Z"
+  }
+]
