@@ -8,6 +8,7 @@ export interface IMember {
   name: string;
   email?: string;
   avatarColor: string;
+  isCreator?: boolean;
   createdAt: Date;
 }
 
@@ -17,6 +18,7 @@ export const MemberSchema = new Schema<IMember>(
     name: { type: String, required: true, trim: true },
     email: { type: String, trim: true },
     avatarColor: { type: String, default: '#3B82F6' },
+    isCreator: { type: Boolean, default: false },
     createdAt: { type: Date, default: Date.now },
   },
   { _id: false }
@@ -185,6 +187,7 @@ export const AuditLogSchema = new Schema<IAuditLog>(
         'EXPENSE_DELETED',
         'SETTLEMENT_RECORDED',
         'MEMBER_ADDED',
+        'MEMBER_REMOVED',
         'GROUP_CREATED',
       ],
     },
@@ -205,6 +208,9 @@ export interface IGroup extends Document {
   name: string;
   description?: string;
   defaultCurrency: string;
+  creatorName: string;
+  creatorMemberId: string;
+  creatorToken: string;
   members: IMember[];
   expenses: IExpense[];
   settlements: ISettlement[];
@@ -221,6 +227,9 @@ export const GroupSchema = new Schema<IGroup>(
     name: { type: String, required: true, trim: true },
     description: { type: String, trim: true },
     defaultCurrency: { type: String, required: true, default: 'USD' },
+    creatorName: { type: String, required: true, default: 'Creator' },
+    creatorMemberId: { type: String, required: true, default: 'm1' },
+    creatorToken: { type: String, required: true, index: true },
     members: [MemberSchema],
     auditLogs: [AuditLogSchema],
   },

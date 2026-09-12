@@ -3,14 +3,19 @@ import {
   fetchGroups,
   fetchGroup,
   createGroup,
+  deleteGroup,
   addMemberToGroup,
+  removeMemberFromGroup,
   addExpense,
   updateExpense,
   deleteExpense,
   recordSettlement,
   getSystemStatus,
+  verifyCreator,
+  getCurrentMemberId,
+  setCurrentMemberId,
 } from './services/api.ts';
-import { Group, GroupSummary, Expense } from './types/index.ts';
+import { Group, GroupSummary, Expense, Member } from './types/index.ts';
 import { Header } from './components/Header.tsx';
 import { BottomNav, ActiveTab } from './components/BottomNav.tsx';
 import { MobileDashboard } from './components/MobileDashboard.tsx';
@@ -22,8 +27,9 @@ import { EditExpenseModal } from './components/EditExpenseModal.tsx';
 import { SettleModal } from './components/SettleModal.tsx';
 import { ShareModal } from './components/ShareModal.tsx';
 import { CreateGroupModal } from './components/CreateGroupModal.tsx';
+import { IdentifyMemberModal } from './components/IdentifyMemberModal.tsx';
 import { ArchitectureBlueprintModal } from './components/ArchitectureBlueprintModal.tsx';
-import { RefreshCw, AlertCircle, Split } from 'lucide-react';
+import { RefreshCw, AlertCircle, Split, ShieldAlert, X } from 'lucide-react';
 
 export default function App() {
   const [groups, setGroups] = useState<Group[]>([]);
@@ -32,6 +38,12 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [systemStatus, setSystemStatus] = useState<{ isMongo: boolean; engine: string } | null>(null);
+
+  // Creator & Member Identity State
+  const [isCreator, setIsCreator] = useState(false);
+  const [currentMemberId, setCurrentMemberIdState] = useState<string | null>(null);
+  const [isIdentifyOpen, setIsIdentifyOpen] = useState(false);
+  const [permissionNotice, setPermissionNotice] = useState<string | null>(null);
 
   // Active view in sticky bottom navigation
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
@@ -49,6 +61,29 @@ export default function App() {
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
   const [isBlueprintOpen, setIsBlueprintOpen] = useState(false);
+
+  // Helper to verify permissions and member identity for a loaded group
+  const syncGroupPermissions = async (group: Group) => {
+    try {
+      const check = await verifyCreator(group.id);
+      setIsCreator(check.isCreator);
+    } catch {
+      setIsCreator(false);
+    }
+
+    // Check stored member identity for this group
+    const storedMemberId =
+      getCurrentMemberId(group.id) || getCurrentMemberId(group.shareCode);
+    const validMember = group.members.find((m) => m.id === storedMemberId);
+
+    if (validMember) {
+      setCurrentMemberIdState(validMember.id);
+    } else {
+      setCurrentMemberIdState(null);
+      // If no valid member chosen yet, open the "Who are you?" modal
+      setIsIdentifyOpen(true);
+    }
+  };
 
   // Initial Data Load
   const loadInitialData = async () => {
@@ -72,6 +107,7 @@ export default function App() {
       const groupData = await fetchGroup(targetIdOrCode);
       setCurrentGroup(groupData.group);
       setSummary(groupData.summary);
+      await syncGroupPermissions(groupData.group);
     } catch (err: any) {
       console.error('Error loading data:', err);
       setError(err.message || 'Failed to connect to server');
@@ -92,11 +128,22 @@ export default function App() {
       setSummary(data.summary);
       const newUrl = `${window.location.pathname}?group=${data.group.shareCode}`;
       window.history.replaceState({}, '', newUrl);
+      await syncGroupPermissions(data.group);
     } catch (err: any) {
       setError(err.message || 'Failed to switch group');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleOpenAddExpense = () => {
+    if (!isCreator) {
+      setPermissionNotice(
+        `View-only access: Only the group creator (${currentGroup?.creatorName || 'Maker'}) can add expenses.`
+      );
+      return;
+    }
+    setIsAddExpenseOpen(true);
   };
 
   const handleSaveExpense = async (expenseData: any) => {
@@ -150,15 +197,53 @@ export default function App() {
     setSummary(data.summary);
     const newUrl = `${window.location.pathname}?group=${newGroup.shareCode}`;
     window.history.replaceState({}, '', newUrl);
+    await syncGroupPermissions(data.group);
     setActiveTab('dashboard');
   };
 
   const handleAddMember = async (name: string) => {
     if (!currentGroup) return;
-    const updated = await addMemberToGroup(currentGroup.id, { name });
-    const data = await fetchGroup(updated.id);
+    const res = await addMemberToGroup(currentGroup.id, { name });
+    const data = await fetchGroup(res.group.id);
     setCurrentGroup(data.group);
     setSummary(data.summary);
+    if (res.addedMember?.id && !currentMemberId) {
+      setCurrentMemberId(data.group.id, res.addedMember.id);
+      setCurrentMemberId(data.group.shareCode, res.addedMember.id);
+      setCurrentMemberIdState(res.addedMember.id);
+    }
+  };
+
+  const handleRemoveMember = async (memberId: string) => {
+    if (!currentGroup) return;
+    const res = await removeMemberFromGroup(currentGroup.id, memberId);
+    setCurrentGroup(res.group);
+    setSummary(res.summary);
+    if (currentMemberId === memberId) {
+      setCurrentMemberIdState(null);
+      setIsIdentifyOpen(true);
+    }
+  };
+
+  const handleDeleteGroup = async () => {
+    if (!currentGroup) return;
+    await deleteGroup(currentGroup.id);
+    const remaining = await fetchGroups();
+    setGroups(remaining);
+    if (remaining.length > 0) {
+      await handleSelectGroup(remaining[0].id);
+    } else {
+      setCurrentGroup(null);
+      setSummary(null);
+    }
+  };
+
+  const handleSelectMemberIdentity = (member: Member) => {
+    if (!currentGroup) return;
+    setCurrentMemberId(currentGroup.id, member.id);
+    setCurrentMemberId(currentGroup.shareCode, member.id);
+    setCurrentMemberIdState(member.id);
+    setIsIdentifyOpen(false);
   };
 
   const openSettleWithPrefill = (fromId?: string, toId?: string, amount?: number) => {
@@ -167,7 +252,6 @@ export default function App() {
   };
 
   const handleSettleMember = (memberId: string) => {
-    // Look up who this member owes in simplified transactions
     const tx = summary?.simplifiedTransactions.find((t) => t.fromMemberId === memberId);
     if (tx) {
       openSettleWithPrefill(tx.fromMemberId, tx.toMemberId, tx.amount);
@@ -176,16 +260,42 @@ export default function App() {
     }
   };
 
+  const activeCurrentMember = currentGroup?.members.find((m) => m.id === currentMemberId) || null;
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans antialiased selection:bg-emerald-500 selection:text-white">
       {/* Top Header */}
       <Header
         currentGroup={currentGroup}
         groups={groups}
+        currentMember={activeCurrentMember}
+        isCreator={isCreator}
         onSelectGroup={handleSelectGroup}
         onOpenNewGroup={() => setIsCreateGroupOpen(true)}
         onOpenShare={() => setIsShareOpen(true)}
+        onOpenIdentifyMember={() => setIsIdentifyOpen(true)}
       />
+
+      {/* Permission Notice Banner Toast */}
+      {permissionNotice && (
+        <div
+          id="permission-notice-toast"
+          className="fixed top-16 left-1/2 -translate-x-1/2 z-50 w-full max-w-sm px-4 animate-in fade-in slide-in-from-top-4 duration-200"
+        >
+          <div className="bg-slate-900 text-white rounded-2xl p-3.5 shadow-xl border border-slate-700 flex items-start justify-between gap-2.5">
+            <div className="flex items-start space-x-2.5">
+              <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-xs font-semibold leading-snug">{permissionNotice}</p>
+            </div>
+            <button
+              onClick={() => setPermissionNotice(null)}
+              className="text-slate-400 hover:text-white shrink-0 p-0.5"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area (Max width phone/tablet optimized with bottom clearance for sticky nav) */}
       <main className="flex-1 w-full max-w-md sm:max-w-xl lg:max-w-2xl mx-auto px-4 pt-4 pb-28">
@@ -215,7 +325,7 @@ export default function App() {
               <MobileDashboard
                 group={currentGroup}
                 summary={summary}
-                onOpenAddExpense={() => setIsAddExpenseOpen(true)}
+                onOpenAddExpense={handleOpenAddExpense}
                 onOpenSettle={openSettleWithPrefill}
                 onViewAllExpenses={() => setActiveTab('expenses')}
                 onViewAllBalances={() => setActiveTab('balances')}
@@ -237,7 +347,7 @@ export default function App() {
                   members={currentGroup.members}
                   baseCurrency={currentGroup.defaultCurrency}
                   onDeleteExpense={handleDeleteExpense}
-                  onOpenAddExpense={() => setIsAddExpenseOpen(true)}
+                  onOpenAddExpense={handleOpenAddExpense}
                   onSelectExpense={handleSelectExpense}
                 />
               </div>
@@ -265,9 +375,13 @@ export default function App() {
               <GroupSettingsView
                 group={currentGroup}
                 groups={groups}
+                isCreator={isCreator}
+                currentMemberId={currentMemberId}
                 onSelectGroup={handleSelectGroup}
                 onOpenCreateGroup={() => setIsCreateGroupOpen(true)}
                 onAddMember={handleAddMember}
+                onRemoveMember={handleRemoveMember}
+                onDeleteGroup={handleDeleteGroup}
                 onOpenBlueprint={() => setIsBlueprintOpen(true)}
                 isMongo={!!systemStatus?.isMongo}
               />
@@ -295,7 +409,7 @@ export default function App() {
         <BottomNav
           activeTab={activeTab}
           onChangeTab={setActiveTab}
-          onOpenAddExpense={() => setIsAddExpenseOpen(true)}
+          onOpenAddExpense={handleOpenAddExpense}
           expenseCount={currentGroup.expenses.length}
         />
       )}
@@ -318,6 +432,7 @@ export default function App() {
             }}
             group={currentGroup}
             expense={selectedExpenseForEdit}
+            isCreator={isCreator}
             onUpdateExpense={handleUpdateExpense}
             onDeleteExpense={handleDeleteExpense}
           />
@@ -336,6 +451,16 @@ export default function App() {
             isOpen={isShareOpen}
             onClose={() => setIsShareOpen(false)}
             group={currentGroup}
+          />
+
+          <IdentifyMemberModal
+            isOpen={isIdentifyOpen}
+            group={currentGroup}
+            currentMemberId={currentMemberId}
+            canDismiss={!!currentMemberId}
+            onClose={() => setIsIdentifyOpen(false)}
+            onSelectMember={handleSelectMemberIdentity}
+            onAddNewMember={handleAddMember}
           />
         </>
       )}

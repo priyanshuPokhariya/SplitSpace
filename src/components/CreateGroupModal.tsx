@@ -8,6 +8,7 @@ interface CreateGroupModalProps {
   onClose: () => void;
   onCreateGroup: (payload: {
     name: string;
+    creatorName: string;
     description?: string;
     defaultCurrency: CurrencyCode;
     members: { name: string; email?: string }[];
@@ -20,9 +21,10 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   onCreateGroup,
 }) => {
   const [name, setName] = useState('');
+  const [creatorName, setCreatorName] = useState('');
   const [currency, setCurrency] = useState<CurrencyCode>('USD');
   const [memberInput, setMemberInput] = useState('');
-  const [members, setMembers] = useState<string[]>(['You', 'Alex']);
+  const [members, setMembers] = useState<string[]>(['Alex']);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,7 +32,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
 
   const handleAddMember = () => {
     const trimmed = memberInput.trim();
-    if (trimmed && !members.includes(trimmed)) {
+    if (trimmed && trimmed.toLowerCase() !== creatorName.trim().toLowerCase() && !members.includes(trimmed)) {
       setMembers([...members, trimmed]);
       setMemberInput('');
     }
@@ -44,9 +46,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   };
 
   const handleRemoveMember = (idx: number) => {
-    if (members.length > 2) {
-      setMembers(members.filter((_, i) => i !== idx));
-    }
+    setMembers(members.filter((_, i) => i !== idx));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -59,8 +59,17 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
       return;
     }
 
-    if (members.length < 2) {
-      setError('Please add at least 2 members to split expenses.');
+    const cleanCreator = creatorName.trim();
+    if (!cleanCreator) {
+      setError("Please enter your name as the group creator (Maker).");
+      return;
+    }
+
+    // Full list of members: Creator + additional friends
+    const fullMemberList = [cleanCreator, ...members.filter((m) => m.toLowerCase() !== cleanCreator.toLowerCase())];
+
+    if (fullMemberList.length < 2) {
+      setError('Please add at least 1 friend to split expenses with.');
       return;
     }
 
@@ -68,8 +77,11 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
     try {
       await onCreateGroup({
         name: cleanName,
+        creatorName: cleanCreator,
         defaultCurrency: currency,
-        members: members.map((m) => ({ name: m })),
+        members: fullMemberList.map((m, idx) => ({
+          name: m,
+        })),
       });
       onClose();
     } catch (err: any) {
@@ -91,7 +103,10 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
         <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100">
           <div className="flex items-center space-x-2">
             <Users className="w-5 h-5 text-emerald-600" />
-            <h2 className="text-lg font-black text-slate-900">New Group</h2>
+            <div>
+              <h2 className="text-lg font-black text-slate-900 leading-tight">Create Group</h2>
+              <p className="text-[11px] text-slate-500">You'll be the group creator with write permissions</p>
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -117,11 +132,34 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
             <input
               id="new-group-name-input"
               type="text"
-              placeholder="e.g. Weekend Roadtrip, Roommates..."
+              placeholder="e.g. Weekend Roadtrip, Apartment 4B..."
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-hidden min-h-[44px] transition"
             />
+          </div>
+
+          {/* Maker's Name (Creator) */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-bold text-slate-800">
+                Your Name <span className="text-emerald-600 font-bold">(Group Creator)</span>
+              </label>
+              <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-md border border-emerald-200">
+                Maker Admin
+              </span>
+            </div>
+            <input
+              id="new-group-creator-input"
+              type="text"
+              placeholder="e.g. Sarah, David..."
+              value={creatorName}
+              onChange={(e) => setCreatorName(e.target.value)}
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-hidden min-h-[44px] transition"
+            />
+            <p className="text-[11px] text-slate-400 mt-1">
+              As creator, you will exclusively hold edit and delete permissions for expenses and members.
+            </p>
           </div>
 
           {/* Currency */}
@@ -143,10 +181,10 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
             </select>
           </div>
 
-          {/* Members */}
+          {/* Other Members */}
           <div>
             <label className="text-xs font-bold text-slate-700 block mb-1.5">
-              Members (minimum 2)
+              Other Members (Friends to split with)
             </label>
             <div className="flex gap-2 mb-2">
               <input
@@ -169,21 +207,24 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
 
             {/* Members chips list */}
             <div className="flex flex-wrap gap-1.5 pt-1">
+              {creatorName.trim() && (
+                <div className="bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl text-xs font-bold text-emerald-800 flex items-center space-x-1.5">
+                  <span>{creatorName.trim()} (Creator)</span>
+                </div>
+              )}
               {members.map((m, idx) => (
                 <div
                   key={idx}
                   className="bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-800 flex items-center space-x-1.5"
                 >
                   <span>{m}</span>
-                  {members.length > 2 && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveMember(idx)}
-                      className="text-slate-400 hover:text-rose-500"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveMember(idx)}
+                    className="text-slate-400 hover:text-rose-500 ml-1"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
                 </div>
               ))}
             </div>
@@ -196,7 +237,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
               disabled={isSubmitting}
               className="w-full min-h-[48px] bg-emerald-600 hover:bg-emerald-700 active:scale-98 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-md shadow-emerald-600/20 transition flex items-center justify-center space-x-2"
             >
-              <span>{isSubmitting ? 'Creating...' : 'Create Group'}</span>
+              <span>{isSubmitting ? 'Creating Group...' : 'Create Group'}</span>
             </button>
           </div>
         </form>

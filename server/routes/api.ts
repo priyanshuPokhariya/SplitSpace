@@ -9,6 +9,7 @@ const router = Router();
 // Validation Schemas using Zod
 const CreateGroupSchema = z.object({
   name: z.string().min(2, 'Group name must be at least 2 characters'),
+  creatorName: z.string().min(1, 'Creator name is required').optional(),
   description: z.string().optional(),
   defaultCurrency: z.enum(['USD', 'EUR', 'GBP', 'INR', 'CAD', 'AUD', 'JPY', 'CHF', 'SGD', 'AED']).default('USD'),
   members: z.array(z.object({
@@ -54,6 +55,34 @@ const RecordSettlementSchema = z.object({
   paymentMethod: z.enum(['Cash', 'Bank Transfer', 'Venmo', 'UPI', 'PayPal', 'Other']).default('Cash'),
 });
 
+// Helper to verify Creator permission
+async function verifyCreatorPermission(
+  req: Request,
+  groupIdOrCode: string
+): Promise<{ authorized: boolean; group?: any; error?: string }> {
+  const group = await StorageEngine.getGroupByIdOrCode(groupIdOrCode);
+  if (!group) {
+    return { authorized: false, error: 'Group not found' };
+  }
+
+  // Token can come from header 'x-creator-token', body 'creatorToken', or query 'creatorToken'
+  const providedToken =
+    (req.headers['x-creator-token'] as string) ||
+    req.body?.creatorToken ||
+    (req.query?.creatorToken as string);
+
+  // If group has a creatorToken configured, only creator can mutate
+  if (group.creatorToken && providedToken !== group.creatorToken) {
+    return {
+      authorized: false,
+      group,
+      error: `Permission Denied: Only the group creator (${group.creatorName || 'Maker'}) can add, edit, or delete expenses, members, and group data. Other members have view-only access.`,
+    };
+  }
+
+  return { authorized: true, group };
+}
+
 // 1. System status
 router.get('/system/status', (req: Request, res: Response) => {
   res.json({
@@ -88,8 +117,11 @@ router.post('/groups', async (req: Request, res: Response) => {
       createdAt: new Date().toISOString(),
     }));
 
+    const creatorName = parsed.creatorName?.trim() || membersWithIds[0]?.name || 'Creator';
+
     const newGroup = await StorageEngine.createGroup({
       name: parsed.name.trim(),
+      creatorName,
       description: parsed.description?.trim(),
       defaultCurrency: parsed.defaultCurrency as CurrencyCode,
       members: membersWithIds,
@@ -98,6 +130,30 @@ router.post('/groups', async (req: Request, res: Response) => {
     res.status(201).json({ success: true, data: newGroup });
   } catch (err: any) {
     res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// 3b. Verify Creator Status
+router.get('/groups/:idOrCode/verify-creator', async (req: Request, res: Response) => {
+  try {
+    const group = await StorageEngine.getGroupByIdOrCode(req.params.idOrCode);
+    if (!group) {
+      return res.status(404).json({ success: false, error: 'Group not found' });
+    }
+    const token =
+      (req.headers['x-creator-token'] as string) ||
+      (req.query?.creatorToken as string);
+    const isCreator = Boolean(group.creatorToken && token === group.creatorToken);
+    res.json({
+      success: true,
+      data: {
+        isCreator,
+        creatorName: group.creatorName,
+        creatorMemberId: group.creatorMemberId,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -128,7 +184,29 @@ router.get('/groups/:idOrCode', async (req: Request, res: Response) => {
   }
 });
 
-// 5. Add Member to Group
+// 5. Delete Group (Creator Only)
+router.delete('/groups/:idOrCode', async (req: Request, res: Response) => {
+  try {
+    const auth = await verifyCreatorPermission(req, req.params.idOrCode);
+    if (!auth.authorized) {
+      return res.status(403).json({ success: false, error: auth.error });
+    }
+
+    const success = await StorageEngine.deleteGroup(auth.group.id);
+    if (!success) {
+      return res.status(404).json({ success: false, error: 'Group not found or could not be deleted' });
+    }
+
+    res.json({
+      success: true,
+      message: `Group "${auth.group.name}" and all associated expenses were deleted permanently.`,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 6. Add Member to Group (Allowed on Join or by Creator)
 router.post('/groups/:idOrCode/members', async (req: Request, res: Response) => {
   try {
     const name = (req.body.name || '').trim();
@@ -141,6 +219,7 @@ router.post('/groups/:idOrCode/members', async (req: Request, res: Response) => 
       name,
       email: req.body.email?.trim() || undefined,
       avatarColor: req.body.avatarColor || colors[Math.floor(Math.random() * colors.length)],
+      isCreator: false,
       createdAt: new Date().toISOString(),
     };
 
@@ -148,17 +227,54 @@ router.post('/groups/:idOrCode/members', async (req: Request, res: Response) => 
     if (!updatedGroup) {
       return res.status(404).json({ success: false, error: 'Group not found' });
     }
-    res.json({ success: true, data: updatedGroup });
+    res.json({ success: true, data: updatedGroup, addedMember: member });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// 6. Add Expense
+// 7. Remove Member from Group (Creator Only with expense edge cases validation)
+router.delete('/groups/:idOrCode/members/:memberId', async (req: Request, res: Response) => {
+  try {
+    const auth = await verifyCreatorPermission(req, req.params.idOrCode);
+    if (!auth.authorized) {
+      return res.status(403).json({ success: false, error: auth.error });
+    }
+
+    const result = await StorageEngine.removeMember(auth.group.id, req.params.memberId);
+    if (!result.success) {
+      return res.status(400).json({ success: false, error: result.error });
+    }
+
+    const summary = calculateGroupBalancesAndDebts(
+      result.group!.members,
+      result.group!.expenses,
+      result.group!.settlements,
+      result.group!.defaultCurrency
+    );
+
+    res.json({
+      success: true,
+      data: {
+        group: result.group,
+        summary,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 8. Add Expense (Creator Only)
 router.post('/groups/:idOrCode/expenses', async (req: Request, res: Response) => {
   try {
+    const auth = await verifyCreatorPermission(req, req.params.idOrCode);
+    if (!auth.authorized) {
+      return res.status(403).json({ success: false, error: auth.error });
+    }
+
     const parsed = AddExpenseSchema.parse(req.body);
-    const result = await StorageEngine.addExpense(req.params.idOrCode, parsed as any);
+    const result = await StorageEngine.addExpense(auth.group.id, parsed as any);
     if (!result) {
       return res.status(404).json({ success: false, error: 'Group not found' });
     }
@@ -176,10 +292,15 @@ router.post('/groups/:idOrCode/expenses', async (req: Request, res: Response) =>
   }
 });
 
-// 7. Update Expense (by Group and ID)
+// 9. Update Expense (by Group and ID - Creator Only)
 router.put('/groups/:idOrCode/expenses/:expenseId', async (req: Request, res: Response) => {
   try {
-    const result = await StorageEngine.updateExpense(req.params.idOrCode, req.params.expenseId, req.body);
+    const auth = await verifyCreatorPermission(req, req.params.idOrCode);
+    if (!auth.authorized) {
+      return res.status(403).json({ success: false, error: auth.error });
+    }
+
+    const result = await StorageEngine.updateExpense(auth.group.id, req.params.expenseId, req.body);
     if (!result) {
       return res.status(404).json({ success: false, error: 'Expense or group not found' });
     }
@@ -195,7 +316,7 @@ router.put('/groups/:idOrCode/expenses/:expenseId', async (req: Request, res: Re
   }
 });
 
-// 7b. Direct Update Expense (/api/expenses/:id)
+// 9b. Direct Update Expense (/api/expenses/:id - Creator Only)
 router.put('/expenses/:id', async (req: Request, res: Response) => {
   try {
     const expenseId = req.params.id;
@@ -205,6 +326,11 @@ router.put('/expenses/:id', async (req: Request, res: Response) => {
     }
     if (!group) {
       return res.status(404).json({ success: false, error: 'Associated expense group not found' });
+    }
+
+    const auth = await verifyCreatorPermission(req, group.id);
+    if (!auth.authorized) {
+      return res.status(403).json({ success: false, error: auth.error });
     }
 
     const result = await StorageEngine.updateExpense(group.id, expenseId, req.body);
@@ -223,16 +349,21 @@ router.put('/expenses/:id', async (req: Request, res: Response) => {
   }
 });
 
-// 7c. Direct Delete Expense (/api/expenses/:id)
+// 9c. Direct Delete Expense (/api/expenses/:id - Creator Only)
 router.delete('/expenses/:id', async (req: Request, res: Response) => {
   try {
     const expenseId = req.params.id;
-    let group = req.body.groupId ? await StorageEngine.getGroupByIdOrCode(req.body.groupId) : null;
+    let group = req.body?.groupId ? await StorageEngine.getGroupByIdOrCode(req.body.groupId) : null;
     if (!group) {
       group = await StorageEngine.findGroupByExpenseId(expenseId);
     }
     if (!group) {
       return res.status(404).json({ success: false, error: 'Associated expense group not found' });
+    }
+
+    const auth = await verifyCreatorPermission(req, group.id);
+    if (!auth.authorized) {
+      return res.status(403).json({ success: false, error: auth.error });
     }
 
     const updated = await StorageEngine.deleteExpense(group.id, expenseId);
@@ -251,10 +382,15 @@ router.delete('/expenses/:id', async (req: Request, res: Response) => {
   }
 });
 
-// 7d. Delete Expense (by Group and ID)
+// 9d. Delete Expense (by Group and ID - Creator Only)
 router.delete('/groups/:idOrCode/expenses/:expenseId', async (req: Request, res: Response) => {
   try {
-    const updated = await StorageEngine.deleteExpense(req.params.idOrCode, req.params.expenseId);
+    const auth = await verifyCreatorPermission(req, req.params.idOrCode);
+    if (!auth.authorized) {
+      return res.status(403).json({ success: false, error: auth.error });
+    }
+
+    const updated = await StorageEngine.deleteExpense(auth.group.id, req.params.expenseId);
     if (!updated) {
       return res.status(404).json({ success: false, error: 'Expense or group not found' });
     }
@@ -270,11 +406,16 @@ router.delete('/groups/:idOrCode/expenses/:expenseId', async (req: Request, res:
   }
 });
 
-// 8. Record Settlement
+// 10. Record Settlement (Creator Only)
 router.post('/groups/:idOrCode/settlements', async (req: Request, res: Response) => {
   try {
+    const auth = await verifyCreatorPermission(req, req.params.idOrCode);
+    if (!auth.authorized) {
+      return res.status(403).json({ success: false, error: auth.error });
+    }
+
     const parsed = RecordSettlementSchema.parse(req.body);
-    const result = await StorageEngine.recordSettlement(req.params.idOrCode, parsed as any);
+    const result = await StorageEngine.recordSettlement(auth.group.id, parsed as any);
     if (!result) {
       return res.status(404).json({ success: false, error: 'Group not found' });
     }
@@ -290,10 +431,15 @@ router.post('/groups/:idOrCode/settlements', async (req: Request, res: Response)
   }
 });
 
-// 9. Delete / Revert Settlement
+// 11. Delete / Revert Settlement (Creator Only)
 router.delete('/groups/:idOrCode/settlements/:settlementId', async (req: Request, res: Response) => {
   try {
-    const updated = await StorageEngine.deleteSettlement(req.params.idOrCode, req.params.settlementId);
+    const auth = await verifyCreatorPermission(req, req.params.idOrCode);
+    if (!auth.authorized) {
+      return res.status(403).json({ success: false, error: auth.error });
+    }
+
+    const updated = await StorageEngine.deleteSettlement(auth.group.id, req.params.settlementId);
     if (!updated) {
       return res.status(404).json({ success: false, error: 'Settlement or group not found' });
     }

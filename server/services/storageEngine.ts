@@ -48,7 +48,7 @@ const sampleGroupId = 'grp-goa-2026';
 const sampleShareCode = 'GOA-7824';
 
 const initialMembers: Member[] = [
-  { id: 'm1', name: 'Aarav Sharma', avatarColor: '#3B82F6', createdAt: new Date().toISOString() },
+  { id: 'm1', name: 'Aarav Sharma', avatarColor: '#3B82F6', isCreator: true, createdAt: new Date().toISOString() },
   { id: 'm2', name: 'Riya Patel', avatarColor: '#EC4899', createdAt: new Date().toISOString() },
   { id: 'm3', name: 'Kabir Verma', avatarColor: '#10B981', createdAt: new Date().toISOString() },
   { id: 'm4', name: 'Ananya Roy', avatarColor: '#F59E0B', createdAt: new Date().toISOString() },
@@ -206,6 +206,9 @@ const sampleGroup: Group = {
   name: 'Trip to Goa 🌴',
   description: '4 friends traveling across North & South Goa for a weekend getaway.',
   defaultCurrency: 'USD',
+  creatorName: 'Aarav Sharma',
+  creatorMemberId: 'm1',
+  creatorToken: 'ctk-sample-goa-creator',
   members: initialMembers,
   expenses: initialExpenses,
   settlements: initialSettlements,
@@ -321,7 +324,7 @@ export const StorageEngine = {
     return null;
   },
 
-  async createGroup(data: Partial<Group>): Promise<Group> {
+  async createGroup(data: Partial<Group> & { creatorName?: string }): Promise<Group> {
     const id = data.id || `grp-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const randomCode = Math.floor(1000 + Math.random() * 9000);
     const prefix = (data.name || 'EXP')
@@ -334,6 +337,25 @@ export const StorageEngine = {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '');
 
+    const members: Member[] = (data.members || []).map((m, idx) => ({
+      ...m,
+      id: m.id || `m-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 5)}`,
+      avatarColor: m.avatarColor || ['#3B82F6', '#EC4899', '#10B981', '#F59E0B', '#8B5CF6'][idx % 5],
+      createdAt: m.createdAt || new Date().toISOString(),
+    }));
+
+    const creatorName = data.creatorName?.trim() || members[0]?.name || 'Creator';
+    let creatorMember = members.find((m) => m.name.toLowerCase() === creatorName.toLowerCase());
+    if (!creatorMember && members.length > 0) {
+      creatorMember = members[0];
+    }
+    if (creatorMember) {
+      creatorMember.isCreator = true;
+    }
+
+    const creatorMemberId = creatorMember?.id || `m-${Date.now()}-creator`;
+    const creatorToken = data.creatorToken || `ctk-${Date.now()}-${Math.random().toString(36).substring(2, 10)}${Math.random().toString(36).substring(2, 10)}`;
+
     const newGroup: Group = {
       id,
       shareCode,
@@ -341,7 +363,10 @@ export const StorageEngine = {
       name: data.name || 'Untitled Group',
       description: data.description || '',
       defaultCurrency: data.defaultCurrency || 'USD',
-      members: data.members || [],
+      creatorName,
+      creatorMemberId,
+      creatorToken,
+      members,
       expenses: [],
       settlements: [],
       auditLogs: [
@@ -349,8 +374,9 @@ export const StorageEngine = {
           id: `log-${Date.now()}`,
           groupId: id,
           action: 'GROUP_CREATED',
-          description: `Group "${data.name}" created with currency ${data.defaultCurrency || 'USD'}`,
+          description: `Group "${data.name}" created by ${creatorName} with currency ${data.defaultCurrency || 'USD'}`,
           timestamp: new Date().toISOString(),
+          actorName: creatorName,
         },
       ],
       createdAt: new Date().toISOString(),
@@ -634,5 +660,106 @@ export const StorageEngine = {
 
     saveToDisk();
     return group;
+  },
+
+  async deleteGroup(groupId: string): Promise<boolean> {
+    const group = await this.getGroupByIdOrCode(groupId);
+    if (!group) return false;
+
+    if (isMongoConnected) {
+      try {
+        await (ExpenseModel as any).deleteMany({ groupId: group.id });
+        await (SettlementModel as any).deleteMany({ groupId: group.id });
+        await (GroupModel as any).deleteOne({ id: group.id });
+      } catch (err) {
+        isMongoConnected = false;
+      }
+    }
+
+    groupsStore.delete(group.id);
+    groupsStore.delete(group.shareCode.toUpperCase());
+    groupsStore.delete(group.slug.toLowerCase());
+    saveToDisk();
+    return true;
+  },
+
+  async removeMember(
+    groupId: string,
+    memberId: string
+  ): Promise<{ success: boolean; error?: string; group?: Group }> {
+    const group = await this.getGroupByIdOrCode(groupId);
+    if (!group) {
+      return { success: false, error: 'Group not found' };
+    }
+
+    const member = group.members.find((m) => m.id === memberId);
+    if (!member) {
+      return { success: false, error: 'Member not found in this group' };
+    }
+
+    if (member.id === group.creatorMemberId || member.isCreator) {
+      return {
+        success: false,
+        error: `Cannot remove ${member.name} because they are the original creator of this group.`,
+      };
+    }
+
+    // Check if member is involved in any active expenses
+    const payingExpense = group.expenses.find((e) =>
+      e.paidBy.some((p) => p.memberId === memberId && p.amount > 0)
+    );
+    if (payingExpense) {
+      return {
+        success: false,
+        error: `Cannot remove ${member.name} because they paid for "${payingExpense.title}". Please edit or delete that expense first.`,
+      };
+    }
+
+    const splittingExpense = group.expenses.find((e) =>
+      e.splits.some((s) => s.memberId === memberId && s.shareAmount > 0)
+    );
+    if (splittingExpense) {
+      return {
+        success: false,
+        error: `Cannot remove ${member.name} because they have an active split in "${splittingExpense.title}". Please adjust or delete that expense first.`,
+      };
+    }
+
+    // Check if involved in settlements
+    const settlement = group.settlements.find(
+      (s) => s.fromMemberId === memberId || s.toMemberId === memberId
+    );
+    if (settlement) {
+      return {
+        success: false,
+        error: `Cannot remove ${member.name} because they have recorded payment settlements in this group.`,
+      };
+    }
+
+    // Safe to remove member
+    group.members = group.members.filter((m) => m.id !== memberId);
+    group.auditLogs.unshift({
+      id: `log-${Date.now()}`,
+      groupId: group.id,
+      action: 'MEMBER_REMOVED',
+      description: `Creator removed member "${member.name}" from the group`,
+      timestamp: new Date().toISOString(),
+      actorName: group.creatorName,
+    });
+    group.updatedAt = new Date().toISOString();
+
+    if (isMongoConnected) {
+      try {
+        await (GroupModel as any).updateOne(
+          { id: group.id },
+          { $set: { members: group.members, auditLogs: group.auditLogs, updatedAt: group.updatedAt } }
+        );
+      } catch (err) {
+        isMongoConnected = false;
+      }
+    }
+
+    saveToDisk();
+    return { success: true, group };
   },
 };

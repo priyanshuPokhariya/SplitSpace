@@ -27,6 +27,7 @@ export interface Member {
   name: string;
   email?: string;
   avatarColor: string;
+  isCreator?: boolean;
   createdAt: string;
 }
 
@@ -83,7 +84,14 @@ export interface Settlement {
 export interface AuditLog {
   id: string;
   groupId: string;
-  action: 'EXPENSE_ADDED' | 'EXPENSE_UPDATED' | 'EXPENSE_DELETED' | 'SETTLEMENT_RECORDED' | 'MEMBER_ADDED' | 'GROUP_CREATED';
+  action:
+    | 'EXPENSE_ADDED'
+    | 'EXPENSE_UPDATED'
+    | 'EXPENSE_DELETED'
+    | 'SETTLEMENT_RECORDED'
+    | 'MEMBER_ADDED'
+    | 'MEMBER_REMOVED'
+    | 'GROUP_CREATED';
   description: string;
   timestamp: string;
   actorName?: string;
@@ -124,6 +132,9 @@ export interface Group {
   name: string;
   description?: string;
   defaultCurrency: CurrencyCode;
+  creatorName?: string;
+  creatorMemberId?: string;
+  creatorToken?: string;
   members: Member[];
   expenses: Expense[];
   settlements: Settlement[];
