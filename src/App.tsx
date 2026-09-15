@@ -14,6 +14,8 @@ import {
   verifyCreator,
   getCurrentMemberId,
   setCurrentMemberId,
+  getStoredUserName,
+  setStoredUserName,
 } from './services/api.ts';
 import { Group, GroupSummary, Expense, Member } from './types/index.ts';
 import { Header } from './components/Header.tsx';
@@ -64,24 +66,58 @@ export default function App() {
 
   // Helper to verify permissions and member identity for a loaded group
   const syncGroupPermissions = async (group: Group) => {
-    try {
-      const check = await verifyCreator(group.id);
-      setIsCreator(check.isCreator);
-    } catch {
-      setIsCreator(false);
-    }
-
-    // Check stored member identity for this group
+    // Check stored member identity and name for this group
     const storedMemberId =
       getCurrentMemberId(group.id) || getCurrentMemberId(group.shareCode);
-    const validMember = group.members.find((m) => m.id === storedMemberId);
+    const storedName =
+      getStoredUserName(group.id) || getStoredUserName(group.shareCode);
+
+    let validMember = group.members.find((m) => m.id === storedMemberId);
+    if (!validMember && storedName) {
+      validMember = group.members.find(
+        (m) => m.name.trim().toLowerCase() === storedName.trim().toLowerCase()
+      );
+    }
+
+    const creatorName = (group.createdBy || group.creatorName || '').trim().toLowerCase();
 
     if (validMember) {
       setCurrentMemberIdState(validMember.id);
+      setCurrentMemberId(group.id, validMember.id);
+      setCurrentMemberId(group.shareCode, validMember.id);
+      setStoredUserName(group.id, validMember.name);
+      setStoredUserName(group.shareCode, validMember.name);
+
+      const isMaker = Boolean(creatorName && validMember.name.trim().toLowerCase() === creatorName);
+      setIsCreator(isMaker);
+    } else if (storedName) {
+      const isMaker = Boolean(creatorName && storedName.trim().toLowerCase() === creatorName);
+      setIsCreator(isMaker);
+      const matched = group.members.find(
+        (m) => m.name.trim().toLowerCase() === storedName.trim().toLowerCase()
+      );
+      if (matched) {
+        setCurrentMemberIdState(matched.id);
+        setCurrentMemberId(group.id, matched.id);
+      } else {
+        setIsIdentifyOpen(true);
+      }
     } else {
+      setIsCreator(false);
       setCurrentMemberIdState(null);
-      // If no valid member chosen yet, open the "Who are you?" modal
+      // If no valid member chosen yet on this device, prompt "Who are you?"
       setIsIdentifyOpen(true);
+    }
+
+    // Also confirm with server middleware verification
+    try {
+      const activeName = validMember?.name || storedName;
+      if (activeName) {
+        const check = await verifyCreator(group.id, activeName);
+        setIsCreator(check.isCreator);
+      }
+    } catch {
+      // Fallback relies on local name match
     }
   };
 
@@ -208,9 +244,13 @@ export default function App() {
     setCurrentGroup(data.group);
     setSummary(data.summary);
     if (res.addedMember?.id && !currentMemberId) {
+      setStoredUserName(data.group.id, res.addedMember.name);
+      setStoredUserName(data.group.shareCode, res.addedMember.name);
       setCurrentMemberId(data.group.id, res.addedMember.id);
       setCurrentMemberId(data.group.shareCode, res.addedMember.id);
       setCurrentMemberIdState(res.addedMember.id);
+      const creatorName = (data.group.createdBy || data.group.creatorName || '').trim().toLowerCase();
+      setIsCreator(Boolean(creatorName && res.addedMember.name.trim().toLowerCase() === creatorName));
     }
   };
 
@@ -240,10 +280,17 @@ export default function App() {
 
   const handleSelectMemberIdentity = (member: Member) => {
     if (!currentGroup) return;
+    setStoredUserName(currentGroup.id, member.name);
+    setStoredUserName(currentGroup.shareCode, member.name);
     setCurrentMemberId(currentGroup.id, member.id);
     setCurrentMemberId(currentGroup.shareCode, member.id);
     setCurrentMemberIdState(member.id);
     setIsIdentifyOpen(false);
+
+    // Sync creator permissions based strictly on selected name
+    const creatorName = (currentGroup.createdBy || currentGroup.creatorName || '').trim().toLowerCase();
+    const isMaker = Boolean(creatorName && member.name.trim().toLowerCase() === creatorName);
+    setIsCreator(isMaker);
   };
 
   const openSettleWithPrefill = (fromId?: string, toId?: string, amount?: number) => {

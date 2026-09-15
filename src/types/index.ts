@@ -132,9 +132,9 @@ export interface Group {
   name: string;
   description?: string;
   defaultCurrency: CurrencyCode;
+  createdBy: string; // Creator's name identifying the group maker
   creatorName?: string;
   creatorMemberId?: string;
-  creatorToken?: string;
   members: Member[];
   expenses: Expense[];
   settlements: Settlement[];

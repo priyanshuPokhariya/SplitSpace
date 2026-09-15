@@ -206,9 +206,9 @@ const sampleGroup: Group = {
   name: 'Trip to Goa 🌴',
   description: '4 friends traveling across North & South Goa for a weekend getaway.',
   defaultCurrency: 'USD',
+  createdBy: 'Aarav Sharma',
   creatorName: 'Aarav Sharma',
   creatorMemberId: 'm1',
-  creatorToken: 'ctk-sample-goa-creator',
   members: initialMembers,
   expenses: initialExpenses,
   settlements: initialSettlements,
@@ -344,7 +344,7 @@ export const StorageEngine = {
       createdAt: m.createdAt || new Date().toISOString(),
     }));
 
-    const creatorName = data.creatorName?.trim() || members[0]?.name || 'Creator';
+    const creatorName = (data.createdBy || data.creatorName || members[0]?.name || 'Creator').trim();
     let creatorMember = members.find((m) => m.name.toLowerCase() === creatorName.toLowerCase());
     if (!creatorMember && members.length > 0) {
       creatorMember = members[0];
@@ -354,7 +354,6 @@ export const StorageEngine = {
     }
 
     const creatorMemberId = creatorMember?.id || `m-${Date.now()}-creator`;
-    const creatorToken = data.creatorToken || `ctk-${Date.now()}-${Math.random().toString(36).substring(2, 10)}${Math.random().toString(36).substring(2, 10)}`;
 
     const newGroup: Group = {
       id,
@@ -363,9 +362,9 @@ export const StorageEngine = {
       name: data.name || 'Untitled Group',
       description: data.description || '',
       defaultCurrency: data.defaultCurrency || 'USD',
+      createdBy: creatorName,
       creatorName,
       creatorMemberId,
-      creatorToken,
       members,
       expenses: [],
       settlements: [],
@@ -697,7 +696,12 @@ export const StorageEngine = {
       return { success: false, error: 'Member not found in this group' };
     }
 
-    if (member.id === group.creatorMemberId || member.isCreator) {
+    const creatorName = (group.createdBy || group.creatorName || '').trim().toLowerCase();
+    if (
+      member.id === group.creatorMemberId ||
+      member.isCreator ||
+      (creatorName && member.name.trim().toLowerCase() === creatorName)
+    ) {
       return {
         success: false,
         error: `Cannot remove ${member.name} because they are the original creator of this group.`,

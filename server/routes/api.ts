@@ -9,6 +9,7 @@ const router = Router();
 // Validation Schemas using Zod
 const CreateGroupSchema = z.object({
   name: z.string().min(2, 'Group name must be at least 2 characters'),
+  createdBy: z.string().min(1, 'Creator name is required').optional(),
   creatorName: z.string().min(1, 'Creator name is required').optional(),
   description: z.string().optional(),
   defaultCurrency: z.enum(['USD', 'EUR', 'GBP', 'INR', 'CAD', 'AUD', 'JPY', 'CHF', 'SGD', 'AED']).default('USD'),
@@ -41,6 +42,7 @@ const AddExpenseSchema = z.object({
     shares: z.number().optional(),
   })).optional().default([]),
   notes: z.string().optional(),
+  userName: z.string().optional(),
 });
 
 const RecordSettlementSchema = z.object({
@@ -53,9 +55,10 @@ const RecordSettlementSchema = z.object({
   date: z.string().optional(),
   notes: z.string().optional(),
   paymentMethod: z.enum(['Cash', 'Bank Transfer', 'Venmo', 'UPI', 'PayPal', 'Other']).default('Cash'),
+  userName: z.string().optional(),
 });
 
-// Helper to verify Creator permission
+// Helper to verify Creator permission strictly by matching user name to group.createdBy
 async function verifyCreatorPermission(
   req: Request,
   groupIdOrCode: string
@@ -65,18 +68,33 @@ async function verifyCreatorPermission(
     return { authorized: false, error: 'Group not found' };
   }
 
-  // Token can come from header 'x-creator-token', body 'creatorToken', or query 'creatorToken'
-  const providedToken =
-    (req.headers['x-creator-token'] as string) ||
-    req.body?.creatorToken ||
-    (req.query?.creatorToken as string);
+  // Name can come from header 'x-user-name' (or 'x-creator-name'), body 'userName' / 'creatorName', or query
+  const providedRawName =
+    (req.headers['x-user-name'] as string) ||
+    (req.headers['x-creator-name'] as string) ||
+    req.body?.userName ||
+    req.body?.creatorName ||
+    req.body?.currentUserName ||
+    (req.query?.userName as string) ||
+    (req.query?.creatorName as string);
 
-  // If group has a creatorToken configured, only creator can mutate
-  if (group.creatorToken && providedToken !== group.creatorToken) {
+  let providedName = '';
+  if (typeof providedRawName === 'string') {
+    try {
+      providedName = decodeURIComponent(providedRawName).trim();
+    } catch {
+      providedName = providedRawName.trim();
+    }
+  }
+
+  const groupCreator = (group.createdBy || group.creatorName || '').trim();
+
+  // Strict check: current user's name must match group.createdBy (case-insensitive)
+  if (!providedName || !groupCreator || providedName.toLowerCase() !== groupCreator.toLowerCase()) {
     return {
       authorized: false,
       group,
-      error: `Permission Denied: Only the group creator (${group.creatorName || 'Maker'}) can add, edit, or delete expenses, members, and group data. Other members have view-only access.`,
+      error: `Permission Denied: Only the group creator ("${groupCreator || 'Maker'}") can add, edit, or delete expenses, members, and group data. You are currently recognized as "${providedName || 'Unknown Member'}" with view-only access.`,
     };
   }
 
@@ -117,10 +135,11 @@ router.post('/groups', async (req: Request, res: Response) => {
       createdAt: new Date().toISOString(),
     }));
 
-    const creatorName = parsed.creatorName?.trim() || membersWithIds[0]?.name || 'Creator';
+    const creatorName = parsed.createdBy?.trim() || parsed.creatorName?.trim() || membersWithIds[0]?.name || 'Creator';
 
     const newGroup = await StorageEngine.createGroup({
       name: parsed.name.trim(),
+      createdBy: creatorName,
       creatorName,
       description: parsed.description?.trim(),
       defaultCurrency: parsed.defaultCurrency as CurrencyCode,
@@ -133,22 +152,43 @@ router.post('/groups', async (req: Request, res: Response) => {
   }
 });
 
-// 3b. Verify Creator Status
+// 3b. Verify Creator Status by User Name
 router.get('/groups/:idOrCode/verify-creator', async (req: Request, res: Response) => {
   try {
     const group = await StorageEngine.getGroupByIdOrCode(req.params.idOrCode);
     if (!group) {
       return res.status(404).json({ success: false, error: 'Group not found' });
     }
-    const token =
-      (req.headers['x-creator-token'] as string) ||
-      (req.query?.creatorToken as string);
-    const isCreator = Boolean(group.creatorToken && token === group.creatorToken);
+
+    const providedRawName =
+      (req.headers['x-user-name'] as string) ||
+      (req.headers['x-creator-name'] as string) ||
+      (req.query?.userName as string) ||
+      (req.query?.creatorName as string);
+
+    let providedName = '';
+    if (typeof providedRawName === 'string') {
+      try {
+        providedName = decodeURIComponent(providedRawName).trim();
+      } catch {
+        providedName = providedRawName.trim();
+      }
+    }
+
+    const groupCreator = (group.createdBy || group.creatorName || '').trim();
+    const isCreator = Boolean(
+      providedName &&
+      groupCreator &&
+      providedName.toLowerCase() === groupCreator.toLowerCase()
+    );
+
     res.json({
       success: true,
       data: {
         isCreator,
-        creatorName: group.creatorName,
+        createdBy: group.createdBy || group.creatorName,
+        creatorName: group.createdBy || group.creatorName,
+        currentUserName: providedName,
         creatorMemberId: group.creatorMemberId,
       },
     });

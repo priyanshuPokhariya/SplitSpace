@@ -2,5 +2,7 @@
   "name": "KittySplit - Group Expense & Debt Simplifier",
   "description": "A group expense sharing and debt simplification tool with flexible split options, multi-currency support, and optimized settlement transactions.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

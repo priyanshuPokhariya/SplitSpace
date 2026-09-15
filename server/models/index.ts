@@ -208,9 +208,9 @@ export interface IGroup extends Document {
   name: string;
   description?: string;
   defaultCurrency: string;
-  creatorName: string;
-  creatorMemberId: string;
-  creatorToken: string;
+  createdBy: string; // Creator's name identifying group maker
+  creatorName?: string;
+  creatorMemberId?: string;
   members: IMember[];
   expenses: IExpense[];
   settlements: ISettlement[];
@@ -227,9 +227,9 @@ export const GroupSchema = new Schema<IGroup>(
     name: { type: String, required: true, trim: true },
     description: { type: String, trim: true },
     defaultCurrency: { type: String, required: true, default: 'USD' },
-    creatorName: { type: String, required: true, default: 'Creator' },
-    creatorMemberId: { type: String, required: true, default: 'm1' },
-    creatorToken: { type: String, required: true, index: true },
+    createdBy: { type: String, required: true, trim: true, default: 'Creator' },
+    creatorName: { type: String, trim: true },
+    creatorMemberId: { type: String, default: 'm1' },
     members: [MemberSchema],
     auditLogs: [AuditLogSchema],
   },

@@ -105,8 +105,11 @@ export const IdentifyMemberModal: React.FC<IdentifyMemberModalProps> = ({
           <div className="space-y-2 max-h-60 overflow-y-auto pr-0.5">
             {group.members.map((member) => {
               const isSelected = member.id === currentMemberId;
+              const creatorName = (group.createdBy || group.creatorName || '').trim().toLowerCase();
               const isCreator =
-                member.id === group.creatorMemberId || member.isCreator;
+                (creatorName && member.name.trim().toLowerCase() === creatorName) ||
+                member.id === group.creatorMemberId ||
+                member.isCreator;
 
               return (
                 <button

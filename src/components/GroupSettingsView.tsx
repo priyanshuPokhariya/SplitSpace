@@ -228,8 +228,11 @@ export const GroupSettingsView: React.FC<GroupSettingsViewProps> = ({
         {/* Members Roster */}
         <div className="divide-y divide-slate-100">
           {group.members.map((member) => {
+            const creatorName = (group.createdBy || group.creatorName || '').trim().toLowerCase();
             const isMemberCreator =
-              member.id === group.creatorMemberId || member.isCreator;
+              (creatorName && member.name.trim().toLowerCase() === creatorName) ||
+              member.id === group.creatorMemberId ||
+              member.isCreator;
             const isSelf = member.id === currentMemberId;
 
             return (
